@@ -1,36 +1,5 @@
 package com.gmail.nossr50.listeners;
 
-import java.util.HashSet;
-
-import org.bukkit.GameMode;
-import org.bukkit.Material;
-import org.bukkit.Sound;
-import org.bukkit.block.Block;
-import org.bukkit.block.BlockState;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.EntityType;
-import org.bukkit.entity.Item;
-import org.bukkit.entity.LivingEntity;
-import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.entity.PlayerDeathEvent;
-import org.bukkit.event.player.AsyncPlayerChatEvent;
-import org.bukkit.event.player.PlayerChangedWorldEvent;
-import org.bukkit.event.player.PlayerCommandPreprocessEvent;
-import org.bukkit.event.player.PlayerDropItemEvent;
-import org.bukkit.event.player.PlayerFishEvent;
-import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerPickupItemEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerRespawnEvent;
-import org.bukkit.event.player.PlayerStatisticIncrementEvent;
-import org.bukkit.event.player.PlayerTeleportEvent;
-import org.bukkit.inventory.ItemStack;
-
-import com.gmail.nossr50.mcMMO;
 import com.gmail.nossr50.chat.ChatManager;
 import com.gmail.nossr50.chat.ChatManagerFactory;
 import com.gmail.nossr50.chat.PartyChatManager;
@@ -42,6 +11,7 @@ import com.gmail.nossr50.datatypes.player.McMMOPlayer;
 import com.gmail.nossr50.datatypes.skills.AbilityType;
 import com.gmail.nossr50.datatypes.skills.SkillType;
 import com.gmail.nossr50.locale.LocaleLoader;
+import com.gmail.nossr50.mcMMO;
 import com.gmail.nossr50.party.ShareHandler;
 import com.gmail.nossr50.runnables.player.PlayerProfileLoadingTask;
 import com.gmail.nossr50.skills.fishing.FishingManager;
@@ -53,22 +23,34 @@ import com.gmail.nossr50.skills.salvage.Salvage;
 import com.gmail.nossr50.skills.salvage.SalvageManager;
 import com.gmail.nossr50.skills.taming.TamingManager;
 import com.gmail.nossr50.skills.unarmed.Unarmed;
-import com.gmail.nossr50.util.BlockUtils;
-import com.gmail.nossr50.util.ChimaeraWing;
-import com.gmail.nossr50.util.EventUtils;
-import com.gmail.nossr50.util.HardcoreManager;
-import com.gmail.nossr50.util.ItemUtils;
-import com.gmail.nossr50.util.Misc;
-import com.gmail.nossr50.util.MobHealthbarUtils;
-import com.gmail.nossr50.util.Motd;
-import com.gmail.nossr50.util.Permissions;
+import com.gmail.nossr50.util.*;
 import com.gmail.nossr50.util.adapter.SoundAdapter;
 import com.gmail.nossr50.util.player.UserManager;
 import com.gmail.nossr50.util.skills.SkillUtils;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import org.bukkit.GameMode;
+import org.bukkit.Material;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
+import org.bukkit.entity.*;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.*;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
+
+import java.util.HashSet;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 public class PlayerListener implements Listener {
     private final mcMMO plugin;
+
+    private final Cache<UUID, Long> interactSpamCache = CacheBuilder.newBuilder()
+            .expireAfterWrite(500, TimeUnit.MILLISECONDS).build();
 
     public PlayerListener(final mcMMO plugin) {
         this.plugin = plugin;
@@ -437,6 +419,19 @@ public class PlayerListener implements Listener {
                 Material type = block.getType();
 
                 if (!Config.getInstance().getAbilitiesOnlyActivateWhenSneaking() || player.isSneaking()) {
+                    /* Prevent dupes from spamming helmets with repair/salvage */
+                    if(heldItem != null && heldItem.getType().name().contains("HELMET")) {
+                        Long present = interactSpamCache.getIfPresent(player.getUniqueId());
+                        if(present == null) {
+                            interactSpamCache.put(player.getUniqueId(), System.currentTimeMillis());
+                        } else {
+                            // Using too soon after last successful attempt, deny it
+                            player.sendMessage(LocaleLoader.getString("Arcadian.Salvage.Cooldown"));
+                            event.setCancelled(true);
+                            return;
+                        }
+                    }
+
                     /* REPAIR CHECKS */
                     if (type == Repair.anvilMaterial && SkillType.REPAIR.getPermissions(player) && mcMMO.getRepairableManager().isRepairable(heldItem)) {
                         RepairManager repairManager = mcMMOPlayer.getRepairManager();

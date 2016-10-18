@@ -1,23 +1,14 @@
 package com.gmail.nossr50.util.blockmeta.chunkmeta;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.UUID;
-
+import com.gmail.nossr50.mcMMO;
+import com.gmail.nossr50.util.blockmeta.conversion.BlockStoreConversionZDirectory;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.entity.Entity;
 
-import com.gmail.nossr50.mcMMO;
-import com.gmail.nossr50.util.blockmeta.conversion.BlockStoreConversionZDirectory;
+import java.io.*;
+import java.util.*;
 
 public class HashChunkManager implements ChunkManager {
     private HashMap<UUID, HashMap<Long, McMMOSimpleRegionFile>> regionFiles = new HashMap<UUID, HashMap<Long, McMMOSimpleRegionFile>>();
@@ -332,7 +323,7 @@ public class HashChunkManager implements ChunkManager {
 
     @Override
     public synchronized void setTrue(int x, int y, int z, World world) {
-        if (world == null) {
+        if (world == null || y < 0) {
             return;
         }
 
@@ -341,6 +332,10 @@ public class HashChunkManager implements ChunkManager {
 
         int ix = Math.abs(x) % 16;
         int iz = Math.abs(z) % 16;
+
+        if(ix < 0 || iz < 0) {
+            return; // This can happen apparently
+        }
 
         String key = world.getName() + "," + cx + "," + cz;
 
